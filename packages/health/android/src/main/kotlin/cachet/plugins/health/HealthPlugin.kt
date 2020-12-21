@@ -1,9 +1,13 @@
 package cachet.plugins.health
 
 import android.app.Activity
+import android.content.Intent
+import android.os.Handler
+import android.util.Log
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.fitness.Fitness
 import com.google.android.gms.fitness.FitnessOptions
+import com.google.android.gms.fitness.data.*
 import com.google.android.gms.fitness.request.DataReadRequest
 import com.google.android.gms.fitness.result.DataReadResponse
 import com.google.android.gms.tasks.Tasks
@@ -11,14 +15,10 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
-import io.flutter.plugin.common.PluginRegistry.Registrar
-import android.content.Intent
-import android.os.Handler
-import android.util.Log
 import io.flutter.plugin.common.PluginRegistry.ActivityResultListener
+import io.flutter.plugin.common.PluginRegistry.Registrar
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
-import com.google.android.gms.fitness.data.*
 
 const val GOOGLE_FIT_PERMISSIONS_REQUEST_CODE = 1111
 
@@ -41,7 +41,6 @@ class HealthPlugin(val activity: Activity, val channel: MethodChannel) : MethodC
     private var MOVE_MINUTES = "MOVE_MINUTES"
     private var DISTANCE_DELTA = "DISTANCE_DELTA"
 
-
     companion object {
         @JvmStatic
         fun registerWith(registrar: Registrar) {
@@ -52,23 +51,16 @@ class HealthPlugin(val activity: Activity, val channel: MethodChannel) : MethodC
         }
     }
 
-
-    /// DataTypes to register
+    // / DataTypes to register
     private val fitnessOptions = FitnessOptions.builder()
-            .addDataType(keyToHealthDataType(BODY_FAT_PERCENTAGE), FitnessOptions.ACCESS_READ)
             .addDataType(keyToHealthDataType(HEIGHT), FitnessOptions.ACCESS_READ)
             .addDataType(keyToHealthDataType(WEIGHT), FitnessOptions.ACCESS_READ)
-            .addDataType(keyToHealthDataType(STEPS), FitnessOptions.ACCESS_READ)
-            .addDataType(keyToHealthDataType(ACTIVE_ENERGY_BURNED), FitnessOptions.ACCESS_READ)
             .addDataType(keyToHealthDataType(HEART_RATE), FitnessOptions.ACCESS_READ)
             .addDataType(keyToHealthDataType(BODY_TEMPERATURE), FitnessOptions.ACCESS_READ)
             .addDataType(keyToHealthDataType(BLOOD_PRESSURE_SYSTOLIC), FitnessOptions.ACCESS_READ)
             .addDataType(keyToHealthDataType(BLOOD_OXYGEN), FitnessOptions.ACCESS_READ)
             .addDataType(keyToHealthDataType(BLOOD_GLUCOSE), FitnessOptions.ACCESS_READ)
-            .addDataType(keyToHealthDataType(MOVE_MINUTES), FitnessOptions.ACCESS_READ)
-            .addDataType(keyToHealthDataType(DISTANCE_DELTA), FitnessOptions.ACCESS_READ)
             .build()
-
 
     override fun success(p0: Any?) {
         handler?.post(
@@ -81,11 +73,13 @@ class HealthPlugin(val activity: Activity, val channel: MethodChannel) : MethodC
     }
 
     override fun error(
-            errorCode: String, errorMessage: String?, errorDetails: Any?) {
+        errorCode: String,
+        errorMessage: String?,
+        errorDetails: Any?
+    ) {
         handler?.post(
                 Runnable { result?.error(errorCode, errorMessage, errorDetails) })
     }
-
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?): Boolean {
         if (requestCode == GOOGLE_FIT_PERMISSIONS_REQUEST_CODE) {
@@ -94,7 +88,7 @@ class HealthPlugin(val activity: Activity, val channel: MethodChannel) : MethodC
                 mResult?.success(true)
             } else if (resultCode == Activity.RESULT_CANCELED) {
                 Log.d("FLUTTER_HEALTH", "Access Denied!")
-                mResult?.success(false);
+                mResult?.success(false)
             }
         }
         return false
@@ -140,7 +134,7 @@ class HealthPlugin(val activity: Activity, val channel: MethodChannel) : MethodC
         }
     }
 
-    /// Extracts the (numeric) value from a Health Data Point
+    // / Extracts the (numeric) value from a Health Data Point
     private fun getHealthDataValue(dataPoint: DataPoint, unit: Field): Any {
         return try {
             dataPoint.getValue(unit).asFloat()
@@ -157,7 +151,7 @@ class HealthPlugin(val activity: Activity, val channel: MethodChannel) : MethodC
         }
     }
 
-    /// Called when the "getHealthDataByType" is invoked from Flutter
+    // / Called when the "getHealthDataByType" is invoked from Flutter
     private fun getData(call: MethodCall, result: Result) {
         val type = call.argument<String>("dataTypeKey")!!
         val startTime = call.argument<Long>("startDate")!!
@@ -167,7 +161,7 @@ class HealthPlugin(val activity: Activity, val channel: MethodChannel) : MethodC
         val dataType = keyToHealthDataType(type)
         val unit = getUnit(type)
 
-        /// Start a new thread for doing a GoogleFit data lookup
+        // / Start a new thread for doing a GoogleFit data lookup
         thread {
             try {
                 val fitnessOptions = FitnessOptions.builder().addDataType(dataType).build()
@@ -179,10 +173,10 @@ class HealthPlugin(val activity: Activity, val channel: MethodChannel) : MethodC
                                 .setTimeRange(startTime, endTime, TimeUnit.MILLISECONDS)
                                 .build())
 
-                /// Fetch all data points for the specified DataType
+                // / Fetch all data points for the specified DataType
                 val dataPoints = Tasks.await<DataReadResponse>(response).getDataSet(dataType)
 
-                /// For each data point, extract the contents and send them to Flutter, along with date and unit.
+                // / For each data point, extract the contents and send them to Flutter, along with date and unit.
                 val healthData = dataPoints.dataPoints.mapIndexed { _, dataPoint ->
                     return@mapIndexed hashMapOf(
                             "value" to getHealthDataValue(dataPoint, unit),
@@ -190,7 +184,6 @@ class HealthPlugin(val activity: Activity, val channel: MethodChannel) : MethodC
                             "date_to" to dataPoint.getEndTime(TimeUnit.MILLISECONDS),
                             "unit" to unit.toString()
                     )
-
                 }
                 activity.runOnUiThread { result.success(healthData) }
             } catch (e3: Exception) {
@@ -210,28 +203,28 @@ class HealthPlugin(val activity: Activity, val channel: MethodChannel) : MethodC
         return typesBuilder.build()
     }
 
-    /// Called when the "requestAuthorization" is invoked from Flutter 
+    // / Called when the "requestAuthorization" is invoked from Flutter 
     private fun requestAuthorization(call: MethodCall, result: Result) {
         val optionsToRegister = callToHealthTypes(call)
         mResult = result
 
         val isGranted = GoogleSignIn.hasPermissions(GoogleSignIn.getLastSignedInAccount(activity), fitnessOptions)
 
-        /// Not granted? Ask for permission
+        // / Not granted? Ask for permission
         if (!isGranted) {
-            GoogleSignIn.requestPermissions(
+           GoogleSignIn.requestPermissions(
                     activity,
                     GOOGLE_FIT_PERMISSIONS_REQUEST_CODE,
                     GoogleSignIn.getLastSignedInAccount(activity),
                     optionsToRegister)
         }
-        /// Permission already granted
+        // / Permission already granted
         else {
             mResult?.success(true)
         }
     }
 
-    /// Handle calls from the MethodChannel
+    // / Handle calls from the MethodChannel
     override fun onMethodCall(call: MethodCall, result: Result) {
         when (call.method) {
             "requestAuthorization" -> requestAuthorization(call, result)
